@@ -1,0 +1,3 @@
+# Temp files for PDF processing - ignore this directory
+*.pdf
+*.tmp
