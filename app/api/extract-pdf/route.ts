@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import * as fs from 'fs'
-import * as path from 'path'
-import { promisify } from 'util'
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,128 +31,39 @@ export async function POST(request: NextRequest) {
     console.log('✅ Valid PDF signature detected')
 
     try {
-      // Use pdf2json for PDF text extraction
-      const PDFParser = require("pdf2json")
-      console.log('pdf2json module loaded successfully')
+      // Try to use pdf-parse library which works with buffers directly (no file system needed)
+      const pdfParse = require('pdf-parse')
       
-      // Create a temporary file for pdf2json to process
-      const tempDir = path.join(process.cwd(), 'temp')
-      const tempFilePath = path.join(tempDir, `temp_${Date.now()}_${file.name}`)
+      console.log('Using pdf-parse for text extraction...')
+      const pdfData = await pdfParse(buffer)
       
-      // Ensure temp directory exists
-      if (!fs.existsSync(tempDir)) {
-        fs.mkdirSync(tempDir, { recursive: true })
-      }
+      const extractedText = pdfData.text.trim()
       
-      // Write buffer to temporary file
-      fs.writeFileSync(tempFilePath, buffer)
-      console.log('Temporary file created:', tempFilePath)
-      
-      // Parse PDF using pdf2json
-      const pdfParser = new PDFParser(null, 1)
-      
-      // Create promise wrapper for pdf2json parsing
-      const parsePDF = () => {
-        return new Promise((resolve, reject) => {
-          pdfParser.on("pdfParser_dataError", (errData: any) => {
-            console.error("PDF parsing error:", errData.parserError)
-            reject(new Error(errData.parserError))
-          })
-          
-          pdfParser.on("pdfParser_dataReady", (pdfData: any) => {
-            try {
-              console.log('PDF data ready, extracting text...')
-              
-              let fullText = ''
-              let pageCount = 0
-              
-              // Extract text from all pages
-              if (pdfData.Pages && Array.isArray(pdfData.Pages)) {
-                pageCount = pdfData.Pages.length
-                console.log(`Processing ${pageCount} pages...`)
-                
-                pdfData.Pages.forEach((page: any, pageIndex: number) => {
-                  let pageText = ''
-                  
-                  if (page.Texts && Array.isArray(page.Texts)) {
-                    page.Texts.forEach((textItem: any) => {
-                      if (textItem.R && Array.isArray(textItem.R)) {
-                        textItem.R.forEach((textRun: any) => {
-                          if (textRun.T) {
-                            // Decode URI component and clean up text
-                            const decodedText = decodeURIComponent(textRun.T)
-                            pageText += decodedText + ' '
-                          }
-                        })
-                      }
-                    })
-                  }
-                  
-                  // Clean up page text
-                  pageText = pageText.trim().replace(/\s+/g, ' ')
-                  if (pageText.length > 0) {
-                    fullText += pageText + '\n'
-                    console.log(`Page ${pageIndex + 1} extracted: ${pageText.length} characters`)
-                  }
-                })
-              }
-              
-              // Clean up the extracted text
-              fullText = fullText.trim()
-              
-              console.log('PDF extraction successful!')
-              console.log('- Number of pages:', pageCount)
-              console.log('- Total text length:', fullText.length)
-              console.log('- First 100 chars:', fullText.substring(0, 100))
-              
-              resolve({
-                text: fullText,
-                pages: pageCount,
-                success: true
-              })
-              
-            } catch (extractError) {
-              console.error('Text extraction error:', extractError)
-              reject(extractError)
-            }
-          })
-          
-          // Start parsing
-          pdfParser.loadPDF(tempFilePath)
-        })
-      }
-      
-      // Parse the PDF
-      const result = await parsePDF() as any
-      
-      // Clean up temporary file
-      try {
-        fs.unlinkSync(tempFilePath)
-        console.log('Temporary file cleaned up')
-      } catch (cleanupError) {
-        console.warn('Failed to cleanup temp file:', cleanupError)
-      }
+      console.log('PDF extraction successful!')
+      console.log('- Number of pages:', pdfData.numpages)
+      console.log('- Total text length:', extractedText.length)
+      console.log('- First 100 chars:', extractedText.substring(0, 100))
       
       // Check if we actually got meaningful text
-      if (!result.text || result.text.trim().length < 10) {
+      if (!extractedText || extractedText.length < 10) {
         console.log('Extracted text is too short or empty')
         throw new Error('No meaningful text extracted from PDF - likely a scanned/image PDF')
       }
-      
+
       return NextResponse.json({ 
-        text: result.text,
+        text: extractedText,
         success: true,
         metadata: {
-          pages: result.pages,
-          textLength: result.text.length,
-          method: 'pdf2json'
+          pages: pdfData.numpages,
+          textLength: extractedText.length,
+          method: 'pdf-parse'
         }
       })
       
     } catch (pdfError: any) {
       console.error("PDF parsing error details:", pdfError?.message || pdfError)
       console.error("Full error:", pdfError)
-      console.log("pdf2json failed, showing manual input fallback...")
+      console.log("pdf-parse failed, showing manual input fallback...")
       
       // Fallback: Return a helpful message for manual text input
       const fallbackText = `PDF Upload Detected: ${file.name}
