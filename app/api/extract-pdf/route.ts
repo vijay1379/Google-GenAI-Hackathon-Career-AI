@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import pdf from "pdf-parse"
 
 export const runtime = "nodejs"
 
@@ -17,6 +16,9 @@ export async function POST(request: NextRequest) {
 
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
+
+    // ⬇ dynamic import here
+    const pdf = (await import("pdf-parse")).default
 
     const pdfData = await pdf(buffer)
     const extractedText = pdfData.text.trim()
@@ -40,4 +42,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
